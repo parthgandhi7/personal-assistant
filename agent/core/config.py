@@ -11,6 +11,11 @@ class Settings(BaseModel):
     api_key: str = Field(..., description="API key required in x-api-key header")
     default_directory: Path = Field(default=Path.home(), description="Default directory for file operations")
     log_level: str = Field(default="INFO", description="Application log level")
+    telegram_bot_token: str | None = Field(default=None, description="Telegram bot token used for long polling")
+    telegram_command_url: str = Field(
+        default="http://127.0.0.1:8000/command",
+        description="HTTP endpoint that receives command requests from the Telegram bridge",
+    )
 
 
 @lru_cache(maxsize=1)
@@ -25,6 +30,8 @@ def get_settings() -> Settings:
             api_key=api_key,
             default_directory=default_directory,
             log_level=log_level,
+            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
+            telegram_command_url=os.getenv("TELEGRAM_COMMAND_URL", "http://127.0.0.1:8000/command"),
         )
     except ValidationError as exc:
         raise RuntimeError(f"Invalid configuration: {exc}") from exc
