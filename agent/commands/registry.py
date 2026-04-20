@@ -14,6 +14,7 @@ class CommandRegistry:
             "open_chrome": system_commands.open_chrome,
             "open_vscode": system_commands.open_vscode,
             "increase_volume": system_commands.increase_volume,
+            "decrease_volume": system_commands.decrease_volume,
             "list_files": system_commands.list_files,
             "open_file": system_commands.open_file,
         }
@@ -31,5 +32,8 @@ class CommandRegistry:
             "open vscode": "open_vscode",
             "open cursor": "open_vscode",
             "volume up": "increase_volume",
+            "increase volume": "increase_volume",
+            "volume down": "decrease_volume",
+            "decrease volume": "decrease_volume",
         }
         return aliases.get(candidate, candidate)
