@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import platform
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,29 @@ def _launch_app(mac_app_name: str, linux_binary: str, windows_binary: str) -> bo
         return False
 
 
+def _validate_volume_amount(payload: dict[str, Any]) -> int:
+    raw_amount = payload.get("amount", 10)
+    if not isinstance(raw_amount, int):
+        raise RuntimeError("Volume amount must be an integer")
+
+    if raw_amount <= 0 or raw_amount > 100:
+        raise RuntimeError("Volume amount must be between 1 and 100")
+
+    return raw_amount
+
+
+def _change_linux_volume(direction: str, amount: int) -> None:
+    if shutil.which("pactl"):
+        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{direction}{amount}%"], check=True)
+        return
+
+    if shutil.which("amixer"):
+        subprocess.run(["amixer", "-D", "pulse", "sset", "Master", f"{amount}%{direction}"], check=True)
+        return
+
+    raise RuntimeError("No supported Linux volume tool found. Install 'pactl' or 'amixer'.")
+
+
 def open_chrome(_: dict[str, Any]) -> str:
     opened = _launch_app(
         mac_app_name="Google Chrome",
@@ -65,7 +89,8 @@ def open_vscode(_: dict[str, Any]) -> str:
     raise RuntimeError("Neither VS Code nor Cursor is available")
 
 
-def increase_volume(_: dict[str, Any]) -> str:
+def increase_volume(payload: dict[str, Any]) -> str:
+    amount = _validate_volume_amount(payload)
     os_name = platform.system().lower()
 
     if os_name == "darwin":
@@ -73,7 +98,7 @@ def increase_volume(_: dict[str, Any]) -> str:
             [
                 "osascript",
                 "-e",
-                "set volume output volume (output volume of (get volume settings) + 10)",
+                f"set volume output volume (output volume of (get volume settings) + {amount})",
             ],
             check=True,
         )
@@ -82,9 +107,30 @@ def increase_volume(_: dict[str, Any]) -> str:
     if os_name == "windows":
         raise RuntimeError("increase_volume is not implemented for Windows in this MVP")
 
-    # Linux fallback using pactl; this may vary by distro.
-    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+10%"], check=True)
+    _change_linux_volume(direction="+", amount=amount)
     return "Volume increased"
+
+
+def decrease_volume(payload: dict[str, Any]) -> str:
+    amount = _validate_volume_amount(payload)
+    os_name = platform.system().lower()
+
+    if os_name == "darwin":
+        subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f"set volume output volume (output volume of (get volume settings) - {amount})",
+            ],
+            check=True,
+        )
+        return "Volume decreased"
+
+    if os_name == "windows":
+        raise RuntimeError("decrease_volume is not implemented for Windows in this MVP")
+
+    _change_linux_volume(direction="-", amount=amount)
+    return "Volume decreased"
 
 
 def list_files(payload: dict[str, Any]) -> dict[str, Any]:

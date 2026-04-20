@@ -7,7 +7,8 @@ This app exposes a local API (`POST /command`) for executing registered laptop c
 - FastAPI server with command endpoint
 - API key protection via `x-api-key`
 - Telegram long-polling bridge (`python -m agent.telegram_bot`)
-- Command alias support (for example `open chrome`, `volume up`)
+- Command alias support (for example `open chrome`, `volume up`, `volume down`)
+- LLM planning layer for strict natural-language → JSON planning
 
 ## 1) Prerequisites
 
@@ -25,6 +26,8 @@ pip install -r requirements.txt
 
 ## 3) Configure environment variables
 
+You can copy `.env.example` into your shell environment or export values directly.
+
 ```bash
 export API_KEY="change-me"
 export DEFAULT_DIRECTORY="$HOME"
@@ -33,6 +36,10 @@ export LOG_LEVEL="INFO"
 # Telegram integration
 export TELEGRAM_BOT_TOKEN="123456789:your-telegram-bot-token"
 export TELEGRAM_COMMAND_URL="http://127.0.0.1:8000/command"
+
+# LLM planner
+export OPENAI_API_KEY="sk-..."
+export OPENAI_MODEL="gpt-4.1-mini"
 ```
 
 > `TELEGRAM_COMMAND_URL` should point to the same API server instance you start below.
@@ -76,6 +83,7 @@ The bridge continuously:
    - `open_chrome`
    - `open vscode`
    - `volume up`
+   - `volume down`
    - `list_files`
 3. You should receive a reply with status/message/data from `/command`.
 
@@ -94,6 +102,7 @@ curl -X POST http://127.0.0.1:8000/command \
 - **Telegram bridge does not respond**: Confirm `TELEGRAM_BOT_TOKEN` is valid and the bridge process is running.
 - **No command result**: Check API server logs for command execution errors.
 - **Cannot execute OS-specific commands**: Verify the target app exists on your laptop (for example Chrome/VS Code).
+- **Linux volume command fails**: Install at least one supported tool: `pactl` (PipeWire/PulseAudio) or `amixer` (ALSA).
 
 ## Project structure
 
@@ -109,6 +118,9 @@ agent/
     security.py
   services/
     executor.py
+    llm_planner.py
+    prompt_templates.py
+    validation.py
   main.py
   telegram_bot.py
 ```

@@ -16,6 +16,8 @@ class Settings(BaseModel):
         default="http://127.0.0.1:8000/command",
         description="HTTP endpoint that receives command requests from the Telegram bridge",
     )
+    openai_api_key: str | None = Field(default=None, description="OpenAI API key for LLM planner")
+    openai_model: str = Field(default="gpt-4.1-mini", description="OpenAI model used by LLM planner")
 
 
 @lru_cache(maxsize=1)
@@ -32,6 +34,8 @@ def get_settings() -> Settings:
             log_level=log_level,
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
             telegram_command_url=os.getenv("TELEGRAM_COMMAND_URL", "http://127.0.0.1:8000/command"),
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         )
     except ValidationError as exc:
         raise RuntimeError(f"Invalid configuration: {exc}") from exc
