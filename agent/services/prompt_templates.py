@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 ALLOWED_ACTIONS: dict[str, dict[str, str]] = {
+    "ask_llm": {"query": "string (required): prompt/query for AI model"},
     "open_browser": {"browser": "string (required): browser name"},
     "open_url": {"url": "string (required): full URL including https://"},
     "search_web": {"query": "string (required): web search query"},
@@ -55,6 +56,7 @@ Hard constraints:
 8) Never simplify multi-step intent into one step when user stated multiple steps.
 
 Allowed actions and parameter contracts:
+- ask_llm: {query: string}
 - open_browser: {browser: string}
 - open_url: {url: string}
 - search_web: {query: string}
@@ -73,6 +75,8 @@ Allowed actions and parameter contracts:
 
 Planning rules:
 - Keep steps minimal and executable.
+- If intent is conversational AI (e.g., "ask ChatGPT", "ask Gemini", "ask Claude", "ask AI", "explain", "tell me about"), use ask_llm and do not use browser actions.
+- Prefer API-based execution for conversational AI tasks. Only use browser-related actions when user explicitly requires opening a website/app UI.
 - Use requires_confirmation=true for:
   - delete_file
   - move_file (when overwrite risk exists or is unknown)
@@ -87,6 +91,21 @@ Planning rules:
 """
 
 FEW_SHOT_EXAMPLES: list[dict[str, str]] = [
+    {
+        "input": "Ask ChatGPT about Kurmavatar",
+        "output": json.dumps(
+            {
+                "intent": "Ask about Kurmavatar using LLM",
+                "steps": [
+                    {
+                        "action": "ask_llm",
+                        "parameters": {"query": "Kurmavatar - the second avatar of Vishnu"},
+                    }
+                ],
+                "requires_confirmation": False,
+            }
+        ),
+    },
     {
         "input": "Open linkedin.com",
         "output": json.dumps(
