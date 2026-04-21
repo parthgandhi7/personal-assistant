@@ -12,6 +12,16 @@ def _run_command(command: list[str]) -> None:
     subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def _run_linux_volume_command(command: list[str]) -> bool:
+    try:
+        subprocess.run(command, check=True)
+        return True
+    except FileNotFoundError:
+        return False
+    except subprocess.CalledProcessError:
+        return False
+
+
 def _open_with_default_app(path: Path) -> None:
     os_name = platform.system().lower()
 
@@ -82,9 +92,49 @@ def increase_volume(_: dict[str, Any]) -> str:
     if os_name == "windows":
         raise RuntimeError("increase_volume is not implemented for Windows in this MVP")
 
-    # Linux fallback using pactl; this may vary by distro.
-    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+10%"], check=True)
-    return "Volume increased"
+    linux_commands = [
+        ["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+10%"],
+        ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "10%+"],
+        ["amixer", "-D", "pulse", "sset", "Master", "10%+"],
+    ]
+    for command in linux_commands:
+        if _run_linux_volume_command(command):
+            return "Volume increased"
+
+    raise RuntimeError(
+        "Unable to increase volume: no supported Linux volume tool found (tried pactl, wpctl, amixer)"
+    )
+
+
+def decrease_volume(_: dict[str, Any]) -> str:
+    os_name = platform.system().lower()
+
+    if os_name == "darwin":
+        subprocess.run(
+            [
+                "osascript",
+                "-e",
+                "set volume output volume (output volume of (get volume settings) - 10)",
+            ],
+            check=True,
+        )
+        return "Volume decreased"
+
+    if os_name == "windows":
+        raise RuntimeError("decrease_volume is not implemented for Windows in this MVP")
+
+    linux_commands = [
+        ["pactl", "set-sink-volume", "@DEFAULT_SINK@", "-10%"],
+        ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "10%-"],
+        ["amixer", "-D", "pulse", "sset", "Master", "10%-"],
+    ]
+    for command in linux_commands:
+        if _run_linux_volume_command(command):
+            return "Volume decreased"
+
+    raise RuntimeError(
+        "Unable to decrease volume: no supported Linux volume tool found (tried pactl, wpctl, amixer)"
+    )
 
 
 def list_files(payload: dict[str, Any]) -> dict[str, Any]:

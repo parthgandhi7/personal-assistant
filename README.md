@@ -76,6 +76,7 @@ The bridge continuously:
    - `open_chrome`
    - `open vscode`
    - `volume up`
+   - `volume down`
    - `list_files`
 3. You should receive a reply with status/message/data from `/command`.
 
