@@ -5,28 +5,30 @@ from __future__ import annotations
 import json
 
 ALLOWED_ACTIONS: dict[str, dict[str, str]] = {
-    "open_application": {
-        "application": "string (required): application name to open, e.g. 'chrome' or 'vscode'",
+    "open_browser": {"browser": "string (required): browser name"},
+    "open_url": {"url": "string (required): full URL including https://"},
+    "search_web": {"query": "string (required): web search query"},
+    "search_website": {
+        "website": "string (required): platform/domain key such as youtube/linkedin/google",
+        "query": "string (required): query to run inside website",
     },
-    "search_file": {
-        "query": "string (required): filename or file pattern to search for",
-        "directory": "string (optional): absolute or user-home-relative directory path",
+    "open_application": {"app_name": "string (required): application name"},
+    "close_application": {"app_name": "string (required): application name"},
+    "list_files": {"path": "string (required): target directory path"},
+    "open_file": {"path": "string (required): file path"},
+    "delete_file": {"path": "string (required): file path"},
+    "copy_file": {
+        "source": "string (required): source file path",
+        "destination": "string (required): destination file path",
     },
-    "open_file": {
-        "path": "string (required): absolute or user-home-relative file path",
+    "move_file": {
+        "source": "string (required): source file path",
+        "destination": "string (required): destination file path",
     },
-    "open_browser": {
-        "browser": "string (optional): browser name, default 'chrome' if unspecified",
-    },
-    "search_web": {
-        "query": "string (required): web search query",
-    },
-    "increase_volume": {
-        "amount": "integer (optional): volume increment percent, default 10",
-    },
-    "decrease_volume": {
-        "amount": "integer (optional): volume decrement percent, default 10",
-    },
+    "create_file": {"path": "string (required): file path to create"},
+    "find_file": {"filename": "string (required): target filename"},
+    "increase_volume": {},
+    "decrease_volume": {},
 }
 
 SYSTEM_PROMPT = """You are a deterministic execution planner for a local AI agent.
@@ -38,7 +40,7 @@ Output must be valid JSON only.
 Hard constraints:
 1) Return EXACTLY one JSON object with keys:
    - intent: string
-   - steps: non-empty array of step objects
+   - steps: array of step objects
    - requires_confirmation: boolean
 2) Every step object must have keys:
    - action: one of the allowed actions
@@ -46,65 +48,79 @@ Hard constraints:
 3) Never include actions outside the allowed list.
 4) Never include shell commands, scripts, or arbitrary execution instructions.
 5) Never pass through raw user text as a command.
-6) If user asks for unsafe/unsupported action, return a safe plan that asks confirmation and uses the closest allowed action(s) only.
+6) If user asks for unsafe/unsupported action, return the closest safe plan using only allowed actions.
+7) Follow explicit instructions exactly:
+   - if user says "open <website>", use open_url (not search_web)
+   - for platform + action requests, preserve all logical steps
+8) Never simplify multi-step intent into one step when user stated multiple steps.
 
 Allowed actions and parameter contracts:
-- open_application: {application: string}
-- search_file: {query: string, directory?: string}
-- open_file: {path: string}
-- open_browser: {browser?: string}
+- open_browser: {browser: string}
+- open_url: {url: string}
 - search_web: {query: string}
-- increase_volume: {amount?: integer}
-- decrease_volume: {amount?: integer}
+- search_website: {website: string, query: string}
+- open_application: {app_name: string}
+- close_application: {app_name: string}
+- list_files: {path: string}
+- open_file: {path: string}
+- delete_file: {path: string}
+- copy_file: {source: string, destination: string}
+- move_file: {source: string, destination: string}
+- create_file: {path: string}
+- find_file: {filename: string}
+- increase_volume: {}
+- decrease_volume: {}
 
 Planning rules:
 - Keep steps minimal and executable.
-- Use requires_confirmation=true for destructive, ambiguous, or potentially risky intents.
-- If user mentions browser + search intent, split into open_browser then search_web.
-- Infer obvious defaults when needed (e.g., browser='chrome').
+- Use requires_confirmation=true for:
+  - delete_file
+  - move_file (when overwrite risk exists or is unknown)
+- Website mapping:
+  - youtube -> https://youtube.com
+  - linkedin -> https://linkedin.com
+  - google -> https://google.com
+- URL handling:
+  - If user input contains a domain like .com/.in, treat it as URL
+  - prepend https:// if scheme missing
+- Never fallback to search_web unless user explicitly asks to search the web.
 """
 
 FEW_SHOT_EXAMPLES: list[dict[str, str]] = [
     {
-        "input": "open chrome and search youtube",
+        "input": "Open linkedin.com",
         "output": json.dumps(
             {
-                "intent": "Open browser and search YouTube",
+                "intent": "Open LinkedIn website",
                 "steps": [
-                    {"action": "open_browser", "parameters": {"browser": "chrome"}},
-                    {"action": "search_web", "parameters": {"query": "YouTube"}},
+                    {"action": "open_url", "parameters": {"url": "https://linkedin.com"}},
                 ],
                 "requires_confirmation": False,
             }
         ),
     },
     {
-        "input": "find report.pdf in my documents",
+        "input": "Search YouTube for Hanuman Chalisa",
         "output": json.dumps(
             {
-                "intent": "Search for report.pdf in Documents",
+                "intent": "Search YouTube for Hanuman Chalisa",
                 "steps": [
-                    {
-                        "action": "search_file",
-                        "parameters": {"query": "report.pdf", "directory": "~/Documents"},
-                    }
+                    {"action": "open_url", "parameters": {"url": "https://youtube.com"}},
+                    {"action": "search_website", "parameters": {"website": "youtube", "query": "Hanuman Chalisa"}},
                 ],
                 "requires_confirmation": False,
             }
         ),
     },
     {
-        "input": "turn the volume down by 20 percent",
+        "input": "Delete file test.txt",
         "output": json.dumps(
             {
-                "intent": "Decrease system volume",
+                "intent": "Delete a file",
                 "steps": [
-                    {
-                        "action": "decrease_volume",
-                        "parameters": {"amount": 20},
-                    }
+                    {"action": "delete_file", "parameters": {"path": "test.txt"}}
                 ],
-                "requires_confirmation": False,
+                "requires_confirmation": True,
             }
         ),
     },

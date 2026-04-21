@@ -5,31 +5,42 @@ from __future__ import annotations
 from typing import Any
 
 ALLOWED_ACTIONS = {
-    "open_application",
-    "search_file",
-    "open_file",
     "open_browser",
+    "open_url",
     "search_web",
+    "search_website",
+    "open_application",
+    "close_application",
+    "list_files",
+    "open_file",
+    "delete_file",
+    "copy_file",
+    "move_file",
+    "create_file",
+    "find_file",
     "increase_volume",
     "decrease_volume",
 }
 
 _ACTION_PARAM_RULES: dict[str, dict[str, type]] = {
-    "open_application": {"application": str},
-    "search_file": {"query": str},
-    "open_file": {"path": str},
-    "open_browser": {},
+    "open_browser": {"browser": str},
+    "open_url": {"url": str},
     "search_web": {"query": str},
+    "search_website": {"website": str, "query": str},
+    "open_application": {"app_name": str},
+    "close_application": {"app_name": str},
+    "list_files": {"path": str},
+    "open_file": {"path": str},
+    "delete_file": {"path": str},
+    "copy_file": {"source": str, "destination": str},
+    "move_file": {"source": str, "destination": str},
+    "create_file": {"path": str},
+    "find_file": {"filename": str},
     "increase_volume": {},
     "decrease_volume": {},
 }
 
-_OPTIONAL_PARAM_RULES: dict[str, dict[str, type]] = {
-    "search_file": {"directory": str},
-    "open_browser": {"browser": str},
-    "increase_volume": {"amount": int},
-    "decrease_volume": {"amount": int},
-}
+_OPTIONAL_PARAM_RULES: dict[str, dict[str, type]] = {}
 
 
 class PlanValidationError(ValueError):
@@ -60,8 +71,8 @@ def validate_plan(plan: dict[str, Any]) -> bool:
         raise PlanValidationError("'requires_confirmation' must be a boolean")
 
     steps = plan.get("steps")
-    if not isinstance(steps, list) or not steps:
-        raise PlanValidationError("'steps' must be a non-empty list")
+    if not isinstance(steps, list):
+        raise PlanValidationError("'steps' must be a list")
 
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
