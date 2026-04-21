@@ -140,10 +140,7 @@ def search_web(payload: dict[str, Any]) -> str:
             linux_binary="google-chrome",
             windows_binary="chrome",
         )
-        if not opened:
-            webbrowser.open(url)
-        else:
-            webbrowser.open(url)
+        webbrowser.open(url)
     else:
         webbrowser.open(url)
 
