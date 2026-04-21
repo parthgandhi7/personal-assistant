@@ -1,6 +1,6 @@
 # Personal AI Laptop Agent + Telegram Bridge
 
-This app exposes a local API (`POST /command`) for executing registered laptop commands, plus a Telegram bot bridge that forwards Telegram messages to that endpoint and sends the response back to the chat.
+This app exposes a local API (`POST /command`) for executing registered laptop commands, plus a Telegram bot bridge that forwards Telegram messages to that endpoint and sends the response back to the chat. Unknown commands are routed through the LLM planner to produce a validated multi-step plan.
 
 ## What you get
 
@@ -85,6 +85,7 @@ The bridge continuously:
    - `volume up`
    - `volume down`
    - `list_files`
+   - `Open Chrome and search youtube for Hanuman Chalisa`
 3. You should receive a reply with status/message/data from `/command`.
 
 ## Optional: Test `/command` directly with curl

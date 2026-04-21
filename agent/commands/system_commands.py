@@ -3,8 +3,10 @@ from __future__ import annotations
 import platform
 import shutil
 import subprocess
+import webbrowser
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
 from agent.core.config import get_settings
 
@@ -68,6 +70,18 @@ def _change_linux_volume(direction: str, amount: int) -> None:
     raise RuntimeError("No supported Linux volume tool found. Install 'pactl' or 'amixer'.")
 
 
+def _resolve_search_directory(payload: dict[str, Any]) -> Path:
+    settings = get_settings()
+    raw_directory = payload.get("directory")
+    target_directory = Path(raw_directory).expanduser() if raw_directory else settings.default_directory
+    target_directory = target_directory.resolve()
+
+    if not target_directory.exists() or not target_directory.is_dir():
+        raise RuntimeError(f"Directory does not exist: {target_directory}")
+
+    return target_directory
+
+
 def open_chrome(_: dict[str, Any]) -> str:
     opened = _launch_app(
         mac_app_name="Google Chrome",
@@ -87,6 +101,75 @@ def open_vscode(_: dict[str, Any]) -> str:
         return "Cursor opened"
 
     raise RuntimeError("Neither VS Code nor Cursor is available")
+
+
+def open_application(payload: dict[str, Any]) -> str:
+    app = payload.get("application")
+    if not isinstance(app, str) or not app.strip():
+        raise RuntimeError("Missing required field: application")
+
+    candidate = app.strip().lower()
+    if candidate in {"chrome", "google chrome"}:
+        return open_chrome({})
+
+    if candidate in {"vscode", "vs code", "visual studio code", "cursor"}:
+        return open_vscode({})
+
+    raise RuntimeError(f"Unsupported application: {app}")
+
+
+def open_browser(payload: dict[str, Any]) -> str:
+    browser = payload.get("browser", "chrome")
+    if not isinstance(browser, str) or not browser.strip():
+        browser = "chrome"
+    return open_application({"application": browser})
+
+
+def search_web(payload: dict[str, Any]) -> str:
+    query = payload.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise RuntimeError("Missing required field: query")
+
+    browser = payload.get("browser", "")
+    q = quote_plus(query.strip())
+    url = f"https://www.google.com/search?q={q}"
+
+    if isinstance(browser, str) and browser.strip().lower() in {"chrome", "google chrome"}:
+        opened = _launch_app(
+            mac_app_name="Google Chrome",
+            linux_binary="google-chrome",
+            windows_binary="chrome",
+        )
+        webbrowser.open(url)
+    else:
+        webbrowser.open(url)
+
+    return f"Searching web for: {query.strip()}"
+
+
+def search_file(payload: dict[str, Any]) -> dict[str, Any]:
+    query = payload.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise RuntimeError("Missing required field: query")
+
+    target_directory = _resolve_search_directory(payload)
+    needle = query.strip().lower()
+
+    matches: list[str] = []
+    for path in target_directory.rglob("*"):
+        if not path.is_file():
+            continue
+        if needle in path.name.lower():
+            matches.append(str(path))
+        if len(matches) >= 50:
+            break
+
+    return {
+        "directory": str(target_directory),
+        "query": query.strip(),
+        "matches": matches,
+        "count": len(matches),
+    }
 
 
 def increase_volume(payload: dict[str, Any]) -> str:
@@ -134,14 +217,7 @@ def decrease_volume(payload: dict[str, Any]) -> str:
 
 
 def list_files(payload: dict[str, Any]) -> dict[str, Any]:
-    settings = get_settings()
-    raw_directory = payload.get("directory")
-    target_directory = Path(raw_directory).expanduser() if raw_directory else settings.default_directory
-    target_directory = target_directory.resolve()
-
-    if not target_directory.exists() or not target_directory.is_dir():
-        raise RuntimeError(f"Directory does not exist: {target_directory}")
-
+    target_directory = _resolve_search_directory(payload)
     items = sorted(p.name for p in target_directory.iterdir())
     return {
         "directory": str(target_directory),
