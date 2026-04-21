@@ -22,8 +22,16 @@ class Settings(BaseModel):
 
 def _load_dotenv_if_present() -> None:
     """Load key/value pairs from a local .env file into os.environ when unset."""
-    env_path = Path.cwd() / ".env"
-    if not env_path.exists():
+    explicit_env_file = os.getenv("ENV_FILE", "").strip()
+
+    project_root_env = Path(__file__).resolve().parents[2] / ".env"
+    candidates: list[Path] = []
+    if explicit_env_file:
+        candidates.append(Path(explicit_env_file).expanduser())
+    candidates.extend([Path.cwd() / ".env", project_root_env])
+
+    env_path = next((p for p in candidates if p.exists() and p.is_file()), None)
+    if env_path is None:
         return
 
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
