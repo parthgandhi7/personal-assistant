@@ -6,7 +6,7 @@ import subprocess
 import webbrowser
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 from agent.core.config import get_settings
 
@@ -70,16 +70,27 @@ def _change_linux_volume(direction: str, amount: int) -> None:
     raise RuntimeError("No supported Linux volume tool found. Install 'pactl' or 'amixer'.")
 
 
-def _resolve_search_directory(payload: dict[str, Any]) -> Path:
+def _resolve_directory(path_value: str | None) -> Path:
     settings = get_settings()
-    raw_directory = payload.get("directory")
-    target_directory = Path(raw_directory).expanduser() if raw_directory else settings.default_directory
+    target_directory = Path(path_value).expanduser() if path_value else settings.default_directory
     target_directory = target_directory.resolve()
 
     if not target_directory.exists() or not target_directory.is_dir():
         raise RuntimeError(f"Directory does not exist: {target_directory}")
 
     return target_directory
+
+
+def _normalize_url(raw_url: str) -> str:
+    candidate = raw_url.strip()
+    if not candidate:
+        raise RuntimeError("Missing required field: url")
+    if not candidate.startswith(("http://", "https://")):
+        candidate = f"https://{candidate}"
+    parsed = urlparse(candidate)
+    if not parsed.netloc:
+        raise RuntimeError(f"Invalid URL: {raw_url}")
+    return candidate
 
 
 def open_chrome(_: dict[str, Any]) -> str:
@@ -104,7 +115,7 @@ def open_vscode(_: dict[str, Any]) -> str:
 
 
 def open_application(payload: dict[str, Any]) -> str:
-    app = payload.get("application")
+    app = payload.get("app_name") or payload.get("application")
     if not isinstance(app, str) or not app.strip():
         raise RuntimeError("Missing required field: application")
 
@@ -123,6 +134,28 @@ def open_browser(payload: dict[str, Any]) -> str:
     if not isinstance(browser, str) or not browser.strip():
         browser = "chrome"
     return open_application({"application": browser})
+
+
+def close_application(payload: dict[str, Any]) -> str:
+    app = payload.get("app_name")
+    if not isinstance(app, str) or not app.strip():
+        raise RuntimeError("Missing required field: app_name")
+    candidate = app.strip()
+    os_name = platform.system().lower()
+    if os_name == "windows":
+        subprocess.run(["taskkill", "/IM", f"{candidate}.exe", "/F"], check=True)
+    else:
+        subprocess.run(["pkill", "-f", candidate], check=True)
+    return f"Closed application: {candidate}"
+
+
+def open_url(payload: dict[str, Any]) -> str:
+    raw_url = payload.get("url")
+    if not isinstance(raw_url, str):
+        raise RuntimeError("Missing required field: url")
+    url = _normalize_url(raw_url)
+    webbrowser.open(url)
+    return f"Opened URL: {url}"
 
 
 def search_web(payload: dict[str, Any]) -> str:
@@ -147,29 +180,43 @@ def search_web(payload: dict[str, Any]) -> str:
     return f"Searching web for: {query.strip()}"
 
 
+def search_website(payload: dict[str, Any]) -> str:
+    website = payload.get("website")
+    query = payload.get("query")
+    if not isinstance(website, str) or not website.strip():
+        raise RuntimeError("Missing required field: website")
+    if not isinstance(query, str) or not query.strip():
+        raise RuntimeError("Missing required field: query")
+    key = website.strip().lower()
+    base = {
+        "youtube": "https://youtube.com",
+        "linkedin": "https://linkedin.com",
+        "google": "https://google.com",
+    }.get(key)
+    if not base:
+        base = _normalize_url(website.strip())
+    q = quote_plus(query.strip())
+    search_url = f"{base.rstrip('/')}/search?q={q}"
+    webbrowser.open(search_url)
+    return f"Searched {website.strip()} for: {query.strip()}"
+
+
 def search_file(payload: dict[str, Any]) -> dict[str, Any]:
     query = payload.get("query")
     if not isinstance(query, str) or not query.strip():
         raise RuntimeError("Missing required field: query")
 
-    target_directory = _resolve_search_directory(payload)
+    target_directory = _resolve_directory(payload.get("directory"))
     needle = query.strip().lower()
 
     matches: list[str] = []
     for path in target_directory.rglob("*"):
-        if not path.is_file():
-            continue
-        if needle in path.name.lower():
+        if path.is_file() and needle in path.name.lower():
             matches.append(str(path))
         if len(matches) >= 50:
             break
 
-    return {
-        "directory": str(target_directory),
-        "query": query.strip(),
-        "matches": matches,
-        "count": len(matches),
-    }
+    return {"directory": str(target_directory), "query": query.strip(), "matches": matches, "count": len(matches)}
 
 
 def increase_volume(payload: dict[str, Any]) -> str:
@@ -217,7 +264,10 @@ def decrease_volume(payload: dict[str, Any]) -> str:
 
 
 def list_files(payload: dict[str, Any]) -> dict[str, Any]:
-    target_directory = _resolve_search_directory(payload)
+    raw_path = payload.get("path")
+    if raw_path is not None and not isinstance(raw_path, str):
+        raise RuntimeError("Field 'path' must be a string")
+    target_directory = _resolve_directory(raw_path)
     items = sorted(p.name for p in target_directory.iterdir())
     return {
         "directory": str(target_directory),
@@ -238,3 +288,72 @@ def open_file(payload: dict[str, Any]) -> str:
 
     _open_with_default_app(target_path)
     return f"Opened {target_path.name}"
+
+
+def delete_file(payload: dict[str, Any]) -> str:
+    raw_path = payload.get("path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise RuntimeError("Missing required field: path")
+    target_path = Path(raw_path).expanduser().resolve()
+    if not target_path.exists():
+        raise RuntimeError(f"File does not exist: {target_path}")
+    if target_path.is_dir():
+        raise RuntimeError("delete_file only supports files")
+    target_path.unlink()
+    return f"Deleted {target_path.name}"
+
+
+def copy_file(payload: dict[str, Any]) -> str:
+    source = payload.get("source")
+    destination = payload.get("destination")
+    if not isinstance(source, str) or not source.strip():
+        raise RuntimeError("Missing required field: source")
+    if not isinstance(destination, str) or not destination.strip():
+        raise RuntimeError("Missing required field: destination")
+    src = Path(source).expanduser().resolve()
+    dst = Path(destination).expanduser().resolve()
+    if not src.exists() or not src.is_file():
+        raise RuntimeError(f"Source file does not exist: {src}")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    return f"Copied {src.name} to {dst}"
+
+
+def move_file(payload: dict[str, Any]) -> str:
+    source = payload.get("source")
+    destination = payload.get("destination")
+    if not isinstance(source, str) or not source.strip():
+        raise RuntimeError("Missing required field: source")
+    if not isinstance(destination, str) or not destination.strip():
+        raise RuntimeError("Missing required field: destination")
+    src = Path(source).expanduser().resolve()
+    dst = Path(destination).expanduser().resolve()
+    if not src.exists():
+        raise RuntimeError(f"Source path does not exist: {src}")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(src), str(dst))
+    return f"Moved {src.name} to {dst}"
+
+
+def create_file(payload: dict[str, Any]) -> str:
+    raw_path = payload.get("path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise RuntimeError("Missing required field: path")
+    target_path = Path(raw_path).expanduser().resolve()
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.touch(exist_ok=True)
+    return f"Created {target_path.name}"
+
+
+def find_file(payload: dict[str, Any]) -> dict[str, Any]:
+    filename = payload.get("filename")
+    if not isinstance(filename, str) or not filename.strip():
+        raise RuntimeError("Missing required field: filename")
+    target_directory = _resolve_directory(None)
+    matches = [str(path) for path in target_directory.rglob(filename.strip()) if path.is_file()]
+    return {
+        "directory": str(target_directory),
+        "filename": filename.strip(),
+        "matches": matches[:50],
+        "count": min(len(matches), 50),
+    }
