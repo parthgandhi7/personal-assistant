@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 ALLOWED_ACTIONS = {
+    "ask_llm",
     "open_browser",
     "open_url",
     "search_web",
@@ -23,6 +24,7 @@ ALLOWED_ACTIONS = {
 }
 
 _ACTION_PARAM_RULES: dict[str, dict[str, type]] = {
+    "ask_llm": {"query": str},
     "open_browser": {"browser": str},
     "open_url": {"url": str},
     "search_web": {"query": str},
