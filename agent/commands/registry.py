@@ -13,7 +13,12 @@ class CommandRegistry:
         self._commands: dict[str, CommandHandler] = {
             "open_chrome": system_commands.open_chrome,
             "open_vscode": system_commands.open_vscode,
+            "open_application": system_commands.open_application,
+            "open_browser": system_commands.open_browser,
+            "search_web": system_commands.search_web,
+            "search_file": system_commands.search_file,
             "increase_volume": system_commands.increase_volume,
+            "decrease_volume": system_commands.decrease_volume,
             "list_files": system_commands.list_files,
             "open_file": system_commands.open_file,
         }
@@ -31,5 +36,8 @@ class CommandRegistry:
             "open vscode": "open_vscode",
             "open cursor": "open_vscode",
             "volume up": "increase_volume",
+            "increase volume": "increase_volume",
+            "volume down": "decrease_volume",
+            "decrease volume": "decrease_volume",
         }
         return aliases.get(candidate, candidate)
