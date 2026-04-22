@@ -30,11 +30,13 @@ def get_executor(request: Request) -> CommandExecutor:
     return executor
 
 
-def _execute_plan(executor: CommandExecutor, plan: dict[str, Any]) -> dict[str, Any]:
+def _execute_action_plan(executor: CommandExecutor, plan: dict[str, Any]) -> dict[str, Any]:
     requires_confirmation = bool(plan.get("requires_confirmation", False))
     if requires_confirmation:
         return {
+            "mode": "action",
             "intent": plan.get("intent"),
+            "message": plan.get("message"),
             "requires_confirmation": True,
             "steps": plan.get("steps", []),
             "step_results": [],
@@ -55,7 +57,9 @@ def _execute_plan(executor: CommandExecutor, plan: dict[str, Any]) -> dict[str, 
         )
 
     return {
+        "mode": "action",
         "intent": plan.get("intent"),
+        "message": plan.get("message"),
         "requires_confirmation": False,
         "steps": plan.get("steps", []),
         "step_results": step_results,
@@ -86,15 +90,23 @@ async def execute_command(
                 detail=plan["error"]["message"],
             )
 
-        try:
-            planned_result = _execute_plan(executor, plan)
-        except CommandExecutionError as plan_exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Plan execution failed: {plan_exc}",
-            ) from plan_exc
+        mode = plan.get("mode")
+        if mode == "action":
+            try:
+                planned_result = _execute_action_plan(executor, plan)
+            except CommandExecutionError as plan_exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Plan execution failed: {plan_exc}",
+                ) from plan_exc
+        else:
+            planned_result = {
+                "mode": mode,
+                "message": plan.get("message"),
+                "executed": False,
+            }
 
-        return CommandResponse(status="success", message="Plan executed", data=planned_result)
+        return CommandResponse(status="success", message="Planner response", data=planned_result)
 
     if isinstance(result, dict):
         return CommandResponse(status="success", message="Command executed", data=result)
