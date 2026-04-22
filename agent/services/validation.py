@@ -49,6 +49,11 @@ class PlanValidationError(ValueError):
     """Raised when generated plan fails safety or schema checks."""
 
 
+def _validate_message(value: Any, field_name: str = "message") -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise PlanValidationError(f"'{field_name}' must be a non-empty string")
+
+
 def validate_plan(plan: dict[str, Any]) -> bool:
     """Validate plan structure and allowed actions.
 
@@ -64,9 +69,19 @@ def validate_plan(plan: dict[str, Any]) -> bool:
     if not isinstance(plan, dict):
         raise PlanValidationError("Plan must be a JSON object")
 
+    mode = plan.get("mode")
+    if mode not in {"action", "clarification", "response"}:
+        raise PlanValidationError("'mode' must be one of: action, clarification, response")
+
+    if mode in {"clarification", "response"}:
+        _validate_message(plan.get("message"))
+        return True
+
     intent = plan.get("intent")
     if not isinstance(intent, str) or not intent.strip():
         raise PlanValidationError("'intent' must be a non-empty string")
+
+    _validate_message(plan.get("message"))
 
     requires_confirmation = plan.get("requires_confirmation")
     if not isinstance(requires_confirmation, bool):
