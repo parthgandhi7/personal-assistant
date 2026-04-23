@@ -7,7 +7,7 @@ from typing import Any
 ALLOWED_ACTIONS = {
     "ask_llm",
     "open_browser",
-    "open_url",
+    "open_resource",
     "search_web",
     "search_website",
     "open_application",
@@ -26,7 +26,7 @@ ALLOWED_ACTIONS = {
 _ACTION_PARAM_RULES: dict[str, dict[str, type]] = {
     "ask_llm": {"query": str},
     "open_browser": {"browser": str},
-    "open_url": {"url": str},
+    "open_resource": {"resource_name": str},
     "search_web": {"query": str},
     "search_website": {"website": str, "query": str},
     "open_application": {"app_name": str},
@@ -54,18 +54,13 @@ def _validate_message(value: Any, field_name: str = "message") -> None:
         raise PlanValidationError(f"'{field_name}' must be a non-empty string")
 
 
+def _looks_like_url(value: str) -> bool:
+    candidate = value.strip().lower()
+    return candidate.startswith(("http://", "https://", "www.")) or "." in candidate
+
+
 def validate_plan(plan: dict[str, Any]) -> bool:
-    """Validate plan structure and allowed actions.
-
-    Args:
-        plan: Parsed JSON plan from LLM.
-
-    Returns:
-        True when plan is valid.
-
-    Raises:
-        PlanValidationError: If plan is malformed or unsafe.
-    """
+    """Validate plan structure and allowed actions."""
     if not isinstance(plan, dict):
         raise PlanValidationError("Plan must be a JSON object")
 
@@ -88,8 +83,8 @@ def validate_plan(plan: dict[str, Any]) -> bool:
         raise PlanValidationError("'requires_confirmation' must be a boolean")
 
     steps = plan.get("steps")
-    if not isinstance(steps, list):
-        raise PlanValidationError("'steps' must be a list")
+    if not isinstance(steps, list) or not steps:
+        raise PlanValidationError("'steps' must be a non-empty list")
 
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
@@ -113,17 +108,16 @@ def validate_plan(plan: dict[str, Any]) -> bool:
                     f"Step {index} action '{action}' requires parameter '{key}' of type {expected_type.__name__}"
                 )
 
+        if action == "open_resource":
+            resource_name = str(parameters.get("resource_name", "")).strip()
+            if _looks_like_url(resource_name):
+                raise PlanValidationError("open_resource.resource_name must be an alias, not a URL")
+
         allowed_param_keys = set(required) | set(optional)
         unexpected = set(parameters.keys()) - allowed_param_keys
         if unexpected:
             raise PlanValidationError(
                 f"Step {index} action '{action}' has unsupported parameters: {sorted(unexpected)}"
             )
-
-        for key, expected_type in optional.items():
-            if key in parameters and not isinstance(parameters[key], expected_type):
-                raise PlanValidationError(
-                    f"Step {index} action '{action}' optional parameter '{key}' must be {expected_type.__name__}"
-                )
 
     return True
